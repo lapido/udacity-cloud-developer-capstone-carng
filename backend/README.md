@@ -165,3 +165,7 @@ sls deploy -v
 
 # Postman collection
 https://www.getpostman.com/collections/03ac646eedca67557666
+
+
+# URL to the live application
+http://capstone-carng.s3-website.eu-west-2.amazonaws.com/
