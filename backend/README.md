@@ -93,6 +93,7 @@ It should return data that looks like this:
             "carId": "3df25b74-575a-4b7f-a3b3-6dbc14340269",
             "gearType": "lorem Ipsum"
         }
+    ]
 }
 ```
 
