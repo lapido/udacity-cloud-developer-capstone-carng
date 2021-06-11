@@ -1,0 +1,12 @@
+module.exports = {
+    preset: 'ts-jest',
+    testEnvironment: 'node',
+    transformIgnorePatterns: [
+      "node_modules/(?!@ngrx|(?!deck.gl)|ng-dynamic)"
+    ],
+    globals: {
+      'ts-jest': {
+          isolatedModules: true
+      }
+  },
+  };

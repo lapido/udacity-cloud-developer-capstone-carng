@@ -1,0 +1,216 @@
+service:
+  name: capstone-project-carsng
+
+plugins:
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-reqvalidator-plugin
+  - serverless-aws-documentation
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'eu-west-2'}
+
+  tracing:
+    lambda: true
+    apiGateway: true
+
+  environment:
+    CARS_TABLE: Cars-iecs9000-${self:provider.stage}
+    USERS_TABLE: Users-iecs9000-${self:provider.stage}
+    INDEX_NAME: CarIdLocalIndex
+    G_INDEX_NAME: CarGlobalIndex
+    IMAGES_S3_BUCKET: serverless-todo-images-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 300
+    AUTH_0_JWKS_URI: https://dev-12vhdpr8.us.auth0.com/.well-known/jwks.json 
+    AUTH_0_KID: VArlqYg1aNvcN-nWzp7mC
+    AUTH_0_CLIENT_ID: sbL5vUVoovGjPobmQkjzSxJC2TR3a1Qc
+    AUTH_0_CLIENT_SECRET: InRK6kNBoTb7JjcugH7GFEgSH7aqMvxEX0kyIkYeQP_ScReGdLzLPP82EGpPjJi8
+    AUTH_0_AUDIENCE: https://dev-12vhdpr8.us.auth0.com/api/v2/
+    AUTH_0_TOKEN_URL: https://dev-12vhdpr8.us.auth0.com/oauth/token
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - codedeploy:*
+      Resource:
+        - '*'
+
+custom:
+  documentation:
+    api:
+      info:
+        version: v1.0.0
+        title: Capstone Carsng
+        description: Capstone Carsng
+    models:
+      - name: CarSaleRequest
+        contentType: application/json
+        schema: ${file(model/car-sale-request.json)}
+
+functions:
+
+  Auth:
+    handler: src/lambda/auth/auth0Authorizer.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:GetItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.USERS_TABLE}
+
+  # TODO: Configure this function
+  CarSale:
+    handler: src/lambda/http/carSale.handler
+    events:
+      - http:
+          method: post
+          path: cars
+          cors: true
+          authorizer: Auth
+          reqValidatorName: RequestBodyValidator
+          documentation:
+            summary: Create a new Car sale
+            description: Create a new car sale
+            requestModels:
+              'application/json': CarSaleRequest
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+  
+  GetCars:
+    handler: src/lambda/http/getCars.handler
+    events:
+      - http:
+          method: get
+          path: cars
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Scan
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+
+  BuyCar:
+    handler: src/lambda/http/buyCar.handler
+    events:
+      - http:
+          method: put
+          path: cars/{carId}
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}/index/${self:provider.environment.G_INDEX_NAME}
+  
+  GenerateUploadUrl:
+    handler: src/lambda/http/generateUploadUrl.handler
+    events:
+      - http:
+          method: post
+          path: cars/{carId}/attachment
+          cors: true
+          authorizer: Auth
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:UpdateItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CARS_TABLE}/index/${self:provider.environment.G_INDEX_NAME}
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
+
+resources:
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+  
+    CarsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: carId
+            AttributeType: S
+          - AttributeName: sellerUserId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: sellerUserId
+            KeyType: HASH
+          - AttributeName: carId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.CARS_TABLE}
+        LocalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.INDEX_NAME}
+            KeySchema:
+              - AttributeName: sellerUserId
+                KeyType: HASH
+              - AttributeName: carId
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL # What attributes will be copied to an index
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.G_INDEX_NAME}
+            KeySchema:
+            - AttributeName: carId
+              KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.USERS_TABLE}
+        
+
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false
