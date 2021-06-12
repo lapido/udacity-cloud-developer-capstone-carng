@@ -5,20 +5,17 @@
     "properties": {
       "brand": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9 ]+$",
-        "minLength": 5,
+        "minLength": 1,
         "maxLength": 20
       },
       "model": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9 ]+$",
-        "minLength": 5,
+        "minLength": 1,
         "maxLength": 20
       },
       "gearType": {
         "type": "string",
-        "pattern": "^[a-zA-Z0-9 ]+$",
-        "minLength": 5,
+        "minLength": 1,
         "maxLength": 20
       },
       "year": {
